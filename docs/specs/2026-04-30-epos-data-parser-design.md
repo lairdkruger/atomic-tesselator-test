@@ -123,7 +123,7 @@ Cached on `EposData` via `Map<EposField, StridedColumnView>` — `.column()` ret
 
 ### File Input
 
-- **Dev**: auto-load from `public/data/atom_probe_tomography_data-public.epos`
+- **Dev**: auto-load from `public/data/local/atom_probe_tomography_data-public.epos`
 - **Prod**: drag-and-drop file input, no extension validation
 
 ### Main Thread View Reconstruction

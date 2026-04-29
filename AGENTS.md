@@ -52,3 +52,5 @@ Exports a typed, tree-shakeable ESM API. No runtime dependencies.
 - No unnecessary comments — code should be self-documenting
 - Commits: imperative, lowercase, ≤60 chars
 - Assertions over silence — always throw descriptive errors, never fail silently
+- File names: kebab-case (e.g. `epos-data.ts`, `strided-column-view.ts`)
+- Imports: omit file extensions (e.g. `from "./constants"` not `from "./constants.js"`)

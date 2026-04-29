@@ -1,10 +1,8 @@
 ---
-import { parser } from "parser";
-
-const parsed = parser();
+import { FIELD_COUNT, PARTICLE_STRIDE, FIELD_NAMES } from "parser";
 ---
 
 <div>
-  <h1>Parsed Data</h1>
-  <pre>{JSON.stringify(parsed, null, 2)}</pre>
+  <h1>EPOS Parser</h1>
+  <pre>{JSON.stringify({ FIELD_COUNT, PARTICLE_STRIDE, FIELD_NAMES }, null, 2)}</pre>
 </div>

@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      prettier:
+        specifier: ^3.8.1
+        version: 3.8.3
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -35,6 +38,18 @@ importers:
         version: 5.9.3
 
   packages/parser:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.2.3
+        version: 25.6.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite:
+        specifier: 7.3.1
+        version: 7.3.1(@types/node@25.6.0)(tsx@4.21.0)
+
+  packages/renderer:
     devDependencies:
       '@types/node':
         specifier: ^25.2.3
