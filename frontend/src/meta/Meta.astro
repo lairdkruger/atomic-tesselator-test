@@ -1,0 +1,15 @@
+---
+import type { MetaType } from "./meta.types";
+
+interface Props {
+  meta: MetaType;
+}
+
+const { meta }: Props = Astro.props;
+---
+
+<meta name="description" content={meta.description} />
+
+<meta property="og:title" content={meta.title} />
+<meta property="og:description" content={meta.description} />
+<meta property="og:image" content={meta.image} /

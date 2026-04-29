@@ -1,0 +1,35 @@
+.type-body {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+}
+
+.type-link {
+  text-decoration-skip-ink: none;
+  text-decoration-thickness: 1px;
+  text-underline-offset: -1px;
+  text-decoration: underline;
+  text-decoration-color: var(--color-yellow);
+}
+
+.type-link:hover {
+  text-decoration-thickness: 12px;
+  text-underline-offset: -12px;
+}
+
+.type-link.underline-color-orange {
+  text-decoration-color: var(--color-orange);
+}
+.type-link.underline-color-green {
+  text-decoration-color: var(--color-green);
+}
+.type-link.underline-color-blue {
+  text-decoration-color: var(--color-blue);
+}
+.type-link.underline-color-purple {
+  text-decoration-color: var(--color-purple);
+}
+
+.text-transform-off {
+  text-transform: none;
+}

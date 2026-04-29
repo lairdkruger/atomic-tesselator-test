@@ -1,0 +1,30 @@
+:root {
+  overscroll-behavior: none;
+  overflow-x: hidden;
+}
+
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+html {
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: var(--font-default);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+
+  background-color: var(--color-background);
+  color: var(--color-text);
+}
+
+::selection {
+  background: var(--color-yellow);
+  color: var(--color-text);
+}
