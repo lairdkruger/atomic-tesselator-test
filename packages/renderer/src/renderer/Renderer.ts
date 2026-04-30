@@ -1,6 +1,7 @@
 import { Camera } from "../camera";
 import { OutputPass } from "./passes/OutputPass";
 import { PointCloudPass } from "./passes/PointCloudPass";
+import type { ColorMapEntry } from "./passes/PointCloudPass";
 import { createCameraBindGroupLayout } from "../camera/CameraUniforms";
 
 export interface RendererOptions {
@@ -154,6 +155,10 @@ export class Renderer {
       ionCount,
     );
     this.pointCloudPass.resize(this.renderWidth, this.renderHeight);
+  }
+
+  public updatePointCloudPalette(colorMap: ColorMapEntry[]): void {
+    this.pointCloudPass?.updatePalette(colorMap);
   }
 
   render(camera: Camera): void {

@@ -1,0 +1,267 @@
+---
+---
+
+<div class="mass-spectrum-container">
+  <div id="mass-spectrum"></div>
+  <div class="overlay" id="mass-spectrum-overlay">
+    <span class="overlay-text">Loading...</span>
+  </div>
+</div>
+
+<style>
+  .mass-spectrum-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+  }
+
+  #mass-spectrum {
+    width: 100%;
+    height: 100%;
+    background: #0a0a0a;
+  }
+
+  #mass-spectrum :global(svg) {
+    width: 100%;
+    height: 100%;
+  }
+
+  #mass-spectrum :global(.axis text) {
+    fill: #999;
+    font-size: 10px;
+  }
+
+  #mass-spectrum :global(.axis line),
+  #mass-spectrum :global(.axis path) {
+    stroke: #444;
+  }
+
+  #mass-spectrum :global(.bar) {
+    cursor: pointer;
+  }
+
+  #mass-spectrum :global(.bar:hover) {
+    opacity: 0.8;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0a0a0a;
+    transition: opacity 0.3s;
+  }
+
+  .overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .overlay-text {
+    color: #666;
+    font-size: 14px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .overlay.error .overlay-text {
+    color: #c44;
+    animation: none;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+</style>
+
+<script>
+  import * as d3 from "d3";
+  import { $appState, $eposData, $highlightedMq, DEFAULT_COLOR_MAP } from "../stores/ui";
+
+  const BIN_WIDTH = 0.1;
+  const DEFAULT_RANGE: [number, number] = [0, 128];
+
+  const overlay = document.getElementById("mass-spectrum-overlay")!;
+  const overlayText = overlay.querySelector(".overlay-text")!;
+
+  let initialized = false;
+
+  function getColorForMq(mq: number): string {
+    for (const entry of DEFAULT_COLOR_MAP) {
+      if (mq >= entry.mqMin && mq < entry.mqMax) {
+        const r = Math.round(entry.r * 255);
+        const g = Math.round(entry.g * 255);
+        const b = Math.round(entry.b * 255);
+        return `rgb(${r},${g},${b})`;
+      }
+    }
+    return "rgb(77,77,77)";
+  }
+
+  $appState.subscribe((state) => {
+    if (state.status === "loading") {
+      overlayText.textContent = state.message || "Loading...";
+      overlay.classList.remove("hidden", "error");
+    } else if (state.status === "error") {
+      overlayText.textContent = state.message;
+      overlay.classList.add("error");
+      overlay.classList.remove("hidden");
+    } else if (state.status === "ready" && !initialized) {
+      const data = $eposData.get();
+      if (data) {
+        initialized = true;
+        overlay.classList.add("hidden");
+        initChart(data);
+      }
+    }
+  });
+
+  function initChart(eposData: import("parser").EposData) {
+    const container = document.getElementById("mass-spectrum");
+    if (!container) return;
+
+    // bin the m/q data
+    const mqCol = eposData.column("mq");
+    const bins = new Map<number, number>();
+    for (let i = 0; i < eposData.count; i++) {
+      const mq = mqCol.get(i);
+      const bin = Math.floor(mq / BIN_WIDTH);
+      bins.set(bin, (bins.get(bin) ?? 0) + 1);
+    }
+
+    const data = Array.from(bins.entries())
+      .map(([bin, count]) => ({ mq: bin * BIN_WIDTH, count }))
+      .sort((a, b) => a.mq - b.mq);
+
+    renderChart(container, data);
+  }
+
+  function renderChart(
+    container: HTMLElement,
+    data: { mq: number; count: number }[],
+  ) {
+    container.innerHTML = "";
+
+    const rect = container.getBoundingClientRect();
+    const margin = { top: 10, right: 20, bottom: 30, left: 50 };
+    const width = rect.width - margin.left - margin.right;
+    const height = rect.height - margin.top - margin.bottom;
+
+    const svg = d3
+      .select(container)
+      .append("svg")
+      .attr("viewBox", `0 0 ${rect.width} ${rect.height}`)
+      .attr("preserveAspectRatio", "xMidYMid meet");
+
+    const g = svg
+      .append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const maxCount = d3.max(data, (d) => d.count) ?? 1;
+
+    const x = d3.scaleLinear().domain(DEFAULT_RANGE).range([0, width]);
+
+    const y = d3
+      .scaleLog()
+      .domain([1, maxCount])
+      .range([height, 0])
+      .clamp(true);
+
+    const xAxis = g
+      .append("g")
+      .attr("class", "axis x-axis")
+      .attr("transform", `translate(0,${height})`)
+      .call(d3.axisBottom(x).ticks(20));
+
+    g.append("g")
+      .attr("class", "axis y-axis")
+      .call(d3.axisLeft(y).ticks(5, "~s"));
+
+    svg
+      .append("text")
+      .attr("x", margin.left + width / 2)
+      .attr("y", rect.height - 2)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#666")
+      .attr("font-size", "10px")
+      .text("m/q (Da)");
+
+    g.append("defs")
+      .append("clipPath")
+      .attr("id", "chart-clip")
+      .append("rect")
+      .attr("width", width)
+      .attr("height", height);
+
+    const barsGroup = g.append("g").attr("clip-path", "url(#chart-clip)");
+
+    const barWidth = Math.max(
+      1,
+      (width / (DEFAULT_RANGE[1] - DEFAULT_RANGE[0])) * BIN_WIDTH,
+    );
+
+    const bars = barsGroup
+      .selectAll(".bar")
+      .data(data.filter((d) => d.count > 0))
+      .join("rect")
+      .attr("class", "bar")
+      .attr("x", (d) => x(d.mq))
+      .attr("y", (d) => y(Math.max(1, d.count)))
+      .attr("width", barWidth)
+      .attr("height", (d) => height - y(Math.max(1, d.count)))
+      .attr("fill", (d) => getColorForMq(d.mq + BIN_WIDTH / 2));
+
+    bars.on("click", (event, d) => {
+      event.stopPropagation();
+      const current = $highlightedMq.get();
+      const mqInt = Math.round(d.mq);
+      if (current && Math.round(current.min) === mqInt) {
+        $highlightedMq.set(null);
+      } else {
+        $highlightedMq.set({ min: mqInt - 0.5, max: mqInt + 0.5 });
+      }
+    });
+
+    svg.on("click", () => {
+      $highlightedMq.set(null);
+    });
+
+    $highlightedMq.subscribe((highlight) => {
+      bars.attr("opacity", (d) => {
+        if (!highlight) return 1;
+        const mqInt = Math.round(d.mq);
+        return mqInt >= Math.round(highlight.min) &&
+          mqInt <= Math.round(highlight.max)
+          ? 1
+          : 0.2;
+      });
+    });
+
+    const zoom = d3
+      .zoom<SVGSVGElement, unknown>()
+      .scaleExtent([1, 50])
+      .translateExtent([
+        [0, 0],
+        [width, height],
+      ])
+      .extent([
+        [0, 0],
+        [width, height],
+      ])
+      .on("zoom", (event) => {
+        const newX = event.transform.rescaleX(x);
+        xAxis.call(d3.axisBottom(newX).ticks(20));
+
+        const newBarWidth = Math.max(
+          0.5,
+          (width / (newX.domain()[1] - newX.domain()[0])) * BIN_WIDTH,
+        );
+
+        bars.attr("x", (d) => newX(d.mq)).attr("width", newBarWidth);
+      });
+
+    svg.call(zoom);
+  }
+</script>

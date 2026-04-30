@@ -11,6 +11,7 @@ export interface ColorMapEntry {
   r: number;
   g: number;
   b: number;
+  visibility?: number; // point size multiplier (default 1.0)
 }
 
 const DEFAULT_COLOR_MAP: ColorMapEntry[] = [
@@ -151,16 +152,15 @@ export class PointCloudPass {
   private writePalette(colorMap: ColorMapEntry[]): void {
     const paletteOffset = 4; // header is 4 floats
 
-    // fill with default grey
+    // fill with default grey, visibility=1
     for (let i = 0; i < PALETTE_SIZE; i++) {
       const base = paletteOffset + i * 4;
-      this.configData[base] = 0.3;
-      this.configData[base + 1] = 0.3;
-      this.configData[base + 2] = 0.3;
-      this.configData[base + 3] = 1.0;
+      this.configData[base] = 0.3; // r
+      this.configData[base + 1] = 0.3; // g
+      this.configData[base + 2] = 0.3; // b
+      this.configData[base + 3] = 1.0; // visibility
     }
 
-    // paint known peaks
     for (const entry of colorMap) {
       for (
         let mq = Math.floor(entry.mqMin);
@@ -172,10 +172,15 @@ export class PointCloudPass {
           this.configData[base] = entry.r;
           this.configData[base + 1] = entry.g;
           this.configData[base + 2] = entry.b;
-          this.configData[base + 3] = 1.0;
+          this.configData[base + 3] = entry.visibility ?? 1.0;
         }
       }
     }
+  }
+
+  updatePalette(colorMap: ColorMapEntry[]): void {
+    this.writePalette(colorMap);
+    this.device.queue.writeBuffer(this.configBuffer, 0, this.configData.buffer);
   }
 
   resize(width: number, height: number): void {
@@ -195,7 +200,7 @@ export class PointCloudPass {
       colorAttachments: [
         {
           view: colorView,
-          clearValue: { r: 0.05, g: 0.05, b: 0.07, a: 1 },
+          clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1 },
           loadOp: "clear",
           storeOp: "store",
         },

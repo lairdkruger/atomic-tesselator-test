@@ -1,11 +1,16 @@
 import { Quat, Vec3 } from "../math";
+import { lerp, rateIndependentLerpingFactor } from "../math/interpolation";
 import { Camera } from "./Camera";
+
+const LOOK_DECAY = 15;
 
 export class FlyControls {
   private canvas: HTMLCanvasElement;
   private camera: Camera;
 
   private keys: Set<string> = new Set();
+  private desiredYaw: number = 0;
+  private desiredPitch: number = 0;
   private yaw: number = 0;
   private pitch: number = 0;
   private speed: number = 5;
@@ -31,12 +36,13 @@ export class FlyControls {
   }
 
   private updateFromCamera(): void {
-    // Read rotation quat directly — worldMatrix may not be updated yet at construction.
     const forward = this.camera.transform.getForward();
     const len = Vec3.len(forward);
     if (len > 0) {
       this.yaw = Math.atan2(forward.x, forward.z);
       this.pitch = Math.asin(Math.max(-1, Math.min(1, forward.y / len)));
+      this.desiredYaw = this.yaw;
+      this.desiredPitch = this.pitch;
     }
   }
 
@@ -75,11 +81,11 @@ export class FlyControls {
       const dx = e.clientX - this.lastMouseX;
       const dy = e.clientY - this.lastMouseY;
 
-      this.yaw += dx * this.sensitivity;
-      this.pitch -= dy * this.sensitivity;
-      this.pitch = Math.max(
+      this.desiredYaw += dx * this.sensitivity;
+      this.desiredPitch -= dy * this.sensitivity;
+      this.desiredPitch = Math.max(
         -Math.PI / 2 + 0.01,
-        Math.min(Math.PI / 2 - 0.01, this.pitch),
+        Math.min(Math.PI / 2 - 0.01, this.desiredPitch),
       );
 
       this.lastMouseX = e.clientX;
@@ -97,13 +103,14 @@ export class FlyControls {
   }
 
   update(deltaTime: number): void {
-    // Build orientation quaternion directly from yaw/pitch — no target point needed.
-    // Yaw rotates around world Y; pitch rotates around local X (applied after yaw).
+    const lookT = rateIndependentLerpingFactor(LOOK_DECAY, deltaTime);
+    this.yaw = lerp(this.yaw, this.desiredYaw, lookT);
+    this.pitch = lerp(this.pitch, this.desiredPitch, lookT);
+
     const qYaw = Quat.fromAxisAngle(FlyControls.WORLD_UP, this.yaw);
     const qPitch = Quat.fromAxisAngle(FlyControls.WORLD_RIGHT, -this.pitch);
     const q = Quat.multiply(qYaw, qPitch);
 
-    // Derive movement basis from the combined quaternion.
     const forward = Vec3.transformQuat(FlyControls.WORLD_FORWARD, q);
     const right = Vec3.transformQuat(FlyControls.WORLD_RIGHT, q);
     const up = Vec3.transformQuat(FlyControls.WORLD_UP, q);
@@ -147,7 +154,6 @@ export class FlyControls {
       );
     }
 
-    // Apply orientation directly — bypasses Transform.lookAt entirely.
     this.camera.transform.setRotationQuat(q.x, q.y, q.z, q.w);
 
     if (hasMoved) {

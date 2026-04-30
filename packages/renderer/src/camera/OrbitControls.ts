@@ -1,14 +1,26 @@
 import { Vec3 } from "../math";
+import { lerp, rateIndependentLerpingFactor } from "../math/interpolation";
 import { Camera } from "./Camera";
+
+const ORBIT_DECAY = 15;
+const ZOOM_DECAY = 10;
+const PAN_DECAY = 12;
 
 export class OrbitControls {
   private canvas: HTMLCanvasElement;
   private camera: Camera;
 
-  private target: Vec3 = Vec3.create();
-  private radius: number;
-  private azimuth: number;
-  private elevation: number;
+  // desired state (set by input)
+  private desiredTarget: Vec3 = Vec3.create();
+  private desiredRadius: number;
+  private desiredAzimuth: number;
+  private desiredElevation: number;
+
+  // current state (lerps toward desired)
+  private currentTarget: Vec3 = Vec3.create();
+  private currentRadius: number;
+  private currentAzimuth: number;
+  private currentElevation: number;
 
   private isDragging = false;
   private isPanning = false;
@@ -35,13 +47,20 @@ export class OrbitControls {
   ) {
     this.canvas = canvas;
     this.camera = camera;
-    this.radius = options?.radius ?? 50;
-    this.azimuth = options?.azimuth ?? 0;
-    this.elevation = options?.elevation ?? 0.5;
+
+    this.desiredRadius = options?.radius ?? 50;
+    this.desiredAzimuth = options?.azimuth ?? 0;
+    this.desiredElevation = options?.elevation ?? 0.5;
 
     if (options?.target) {
-      Vec3.copy(options.target, this.target);
+      Vec3.copy(options.target, this.desiredTarget);
     }
+
+    // init current to desired (no initial lerp)
+    this.currentRadius = this.desiredRadius;
+    this.currentAzimuth = this.desiredAzimuth;
+    this.currentElevation = this.desiredElevation;
+    Vec3.copy(this.desiredTarget, this.currentTarget);
 
     this.initMouse();
     this.applyToCamera();
@@ -50,10 +69,8 @@ export class OrbitControls {
   private initMouse(): void {
     this.canvas.addEventListener("mousedown", (e) => {
       if (e.button === 0) {
-        // left click: rotate
         this.isDragging = true;
       } else if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-        // middle click or shift+left: pan
         this.isPanning = true;
       }
       this.lastMouseX = e.clientX;
@@ -67,16 +84,14 @@ export class OrbitControls {
       this.lastMouseY = e.clientY;
 
       if (this.isDragging) {
-        this.azimuth += dx * this.rotateSensitivity;
-        this.elevation += dy * this.rotateSensitivity;
-        this.elevation = Math.max(
+        this.desiredAzimuth += dx * this.rotateSensitivity;
+        this.desiredElevation += dy * this.rotateSensitivity;
+        this.desiredElevation = Math.max(
           this.minElevation,
-          Math.min(this.maxElevation, this.elevation),
+          Math.min(this.maxElevation, this.desiredElevation),
         );
-        this.applyToCamera();
       } else if (this.isPanning) {
         this.pan(dx, dy);
-        this.applyToCamera();
       }
     });
 
@@ -90,62 +105,70 @@ export class OrbitControls {
       (e) => {
         e.preventDefault();
         const factor = 1 + Math.sign(e.deltaY) * this.zoomSpeed;
-        this.radius = Math.max(
+        this.desiredRadius = Math.max(
           this.minRadius,
-          Math.min(this.maxRadius, this.radius * factor),
+          Math.min(this.maxRadius, this.desiredRadius * factor),
         );
-        this.applyToCamera();
       },
       { passive: false },
     );
 
-    // prevent context menu on right click
     this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
   private pan(dx: number, dy: number): void {
-    // pan in camera-local right and up directions
-    const cosAz = Math.cos(this.azimuth);
-    const sinAz = Math.sin(this.azimuth);
+    const cosAz = Math.cos(this.currentAzimuth);
+    const sinAz = Math.sin(this.currentAzimuth);
+    const panScale = this.panSensitivity * this.currentRadius * 0.01;
 
-    const panScale = this.panSensitivity * this.radius * 0.01;
-
-    // right vector (in xz plane, perpendicular to view)
     const rightX = cosAz;
     const rightZ = sinAz;
 
-    // up vector (world up for simplicity)
-    this.target.x -= dx * panScale * rightX;
-    this.target.z -= dx * panScale * rightZ;
-    this.target.y += dy * panScale;
+    this.desiredTarget.x -= dx * panScale * rightX;
+    this.desiredTarget.z -= dx * panScale * rightZ;
+    this.desiredTarget.y += dy * panScale;
   }
 
-  update(): void {
-    const cosEl = Math.cos(this.elevation);
-    const sinEl = Math.sin(this.elevation);
-    const cosAz = Math.cos(this.azimuth);
-    const sinAz = Math.sin(this.azimuth);
+  update(deltaTime: number): void {
+    const orbitT = rateIndependentLerpingFactor(ORBIT_DECAY, deltaTime);
+    const zoomT = rateIndependentLerpingFactor(ZOOM_DECAY, deltaTime);
+    const panT = rateIndependentLerpingFactor(PAN_DECAY, deltaTime);
 
-    const x = this.target.x + this.radius * cosEl * sinAz;
-    const y = this.target.y + this.radius * sinEl;
-    const z = this.target.z + this.radius * cosEl * cosAz;
+    this.currentAzimuth = lerp(this.currentAzimuth, this.desiredAzimuth, orbitT);
+    this.currentElevation = lerp(this.currentElevation, this.desiredElevation, orbitT);
+    this.currentRadius = lerp(this.currentRadius, this.desiredRadius, zoomT);
+    this.currentTarget.x = lerp(this.currentTarget.x, this.desiredTarget.x, panT);
+    this.currentTarget.y = lerp(this.currentTarget.y, this.desiredTarget.y, panT);
+    this.currentTarget.z = lerp(this.currentTarget.z, this.desiredTarget.z, panT);
 
-    this.camera.transform.setPosition(x, y, z);
-    this.camera.transform.lookAt(this.target);
-    this.camera.needsUpdate = true;
+    this.applyToCamera();
   }
 
   private applyToCamera(): void {
-    this.update();
+    const cosEl = Math.cos(this.currentElevation);
+    const sinEl = Math.sin(this.currentElevation);
+    const cosAz = Math.cos(this.currentAzimuth);
+    const sinAz = Math.sin(this.currentAzimuth);
+
+    const x = this.currentTarget.x + this.currentRadius * cosEl * sinAz;
+    const y = this.currentTarget.y + this.currentRadius * sinEl;
+    const z = this.currentTarget.z + this.currentRadius * cosEl * cosAz;
+
+    this.camera.transform.setPosition(x, y, z);
+    this.camera.transform.lookAt(this.currentTarget);
+    this.camera.needsUpdate = true;
   }
 
   setTarget(x: number, y: number, z: number): void {
-    this.target.set(x, y, z);
+    this.desiredTarget.set(x, y, z);
+    // snap current to desired for initial positioning
+    Vec3.copy(this.desiredTarget, this.currentTarget);
     this.applyToCamera();
   }
 
   setRadius(radius: number): void {
-    this.radius = Math.max(this.minRadius, Math.min(this.maxRadius, radius));
+    this.desiredRadius = Math.max(this.minRadius, Math.min(this.maxRadius, radius));
+    this.currentRadius = this.desiredRadius;
     this.applyToCamera();
   }
 }

@@ -10,7 +10,7 @@ import type { MetaType } from "../meta/meta.types";
 import Meta from "../meta/Meta.astro";
 
 interface Props {
-  meta: MetaType;
+  meta?: MetaType;
 }
 
 const { meta }: Props = Astro.props;

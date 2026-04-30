@@ -14,12 +14,20 @@ struct CameraUniforms {
     far: f32,
 };
 
+// palette entry: rgb = color, scale = point size multiplier
+struct PaletteEntry {
+    r: f32,
+    g: f32,
+    b: f32,
+    visibility: f32,
+};
+
 struct PointCloudConfig {
     point_size: f32,
     ion_count: u32,
     viewport_width: f32,
     viewport_height: f32,
-    palette: array<vec4<f32>, 128>,
+    palette: array<PaletteEntry, 128>,
 };
 
 struct VertexOutput {
@@ -54,8 +62,11 @@ fn vs_main(
 
     let clip = camera.view_projection_matrix * vec4<f32>(pos, 1.0);
 
+    let mq_index = u32(clamp(round(mq), 0.0, 127.0));
+    let entry = config.palette[mq_index];
+
     let corner = TRI_OFFSETS[vertex_index % 3u];
-    let attenuation = config.point_size / max(clip.w, 0.001);
+    let attenuation = config.point_size * entry.visibility / max(clip.w, 0.001);
     let offset = corner * attenuation;
 
     var output: VertexOutput;
@@ -66,7 +77,7 @@ fn vs_main(
         clip.w,
     );
     output.uv = corner;
-    output.mq_index = u32(clamp(round(mq), 0.0, 127.0));
+    output.mq_index = mq_index;
     return output;
 }
 
@@ -76,6 +87,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     //if dot(in.uv, in.uv) > 1.0 {
     //    discard;
     //}
-    let color = config.palette[in.mq_index].rgb;
-    return vec4<f32>(color, 1.0);
+    let e = config.palette[in.mq_index];
+    return vec4<f32>(e.r, e.g, e.b, 1.0);
 }
