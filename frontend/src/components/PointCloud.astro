@@ -159,13 +159,19 @@
     window.addEventListener("resize", onResize);
 
     const time = new Time();
+    const TARGET_FPS = 60;
+    const FRAME_INTERVAL = 1000 / TARGET_FPS;
+    let lastFrameTime = 0;
 
-    function frame() {
+    function frame(now: number) {
+      requestAnimationFrame(frame);
+      if (now - lastFrameTime < FRAME_INTERVAL) return;
+      lastFrameTime = now - ((now - lastFrameTime) % FRAME_INTERVAL);
+
       time.update();
       controls.update(time.delta);
       scene.root.updateWorldMatrix();
       renderer.render(camera);
-      requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
   }
