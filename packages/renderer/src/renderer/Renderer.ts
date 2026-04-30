@@ -161,6 +161,10 @@ export class Renderer {
     this.pointCloudPass?.updatePalette(colorMap);
   }
 
+  public setIonCutoff(n: number): void {
+    this.pointCloudPass?.setIonCutoff(n);
+  }
+
   render(camera: Camera): void {
     if (!this.renderTextureView || !this.depthTextureView) return;
 

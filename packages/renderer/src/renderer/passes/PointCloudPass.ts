@@ -1,9 +1,21 @@
 import shader from "./PointCloudPass.wgsl?raw";
+import { GpuFloats, GpuInts, floatByteSize } from "../../utils";
 
 const PALETTE_SIZE = 128;
-// header: point_size(f32) + ion_count(u32) + viewport_width(f32) + viewport_height(f32) = 16 bytes
-// palette: 128 × vec4<f32> = 128 × 16 = 2048 bytes
-const CONFIG_BUFFER_SIZE = 16 + PALETTE_SIZE * 16;
+
+// Config buffer header offsets (in float / u32 slots — same index, different typed view)
+const OFFSET_POINT_SIZE = 0; // f32
+const OFFSET_ION_COUNT = OFFSET_POINT_SIZE + GpuFloats.f32; // u32 (1 slot)
+const OFFSET_VIEWPORT_WIDTH = OFFSET_ION_COUNT + GpuInts.u32; // f32
+const OFFSET_VIEWPORT_HEIGHT = OFFSET_VIEWPORT_WIDTH + GpuFloats.f32; // f32
+const HEADER_FLOAT_COUNT = OFFSET_VIEWPORT_HEIGHT + GpuFloats.f32; // 4 floats
+
+// Palette layout: PALETTE_SIZE × vec4<f32> (r, g, b, visibility)
+const PALETTE_ENTRY_FLOATS = GpuFloats.vec4;
+const PALETTE_FLOAT_COUNT = PALETTE_SIZE * PALETTE_ENTRY_FLOATS;
+
+const FLOAT_COUNT = HEADER_FLOAT_COUNT + PALETTE_FLOAT_COUNT;
+const CONFIG_BUFFER_SIZE = floatByteSize(FLOAT_COUNT);
 
 export interface ColorMapEntry {
   mqMin: number;
@@ -37,6 +49,7 @@ export class PointCloudPass {
   private ionBindGroup: GPUBindGroup;
   private configBindGroup: GPUBindGroup;
   private ionCount: number;
+  private visibleCount: number;
   private configData: Float32Array;
   private configU32: Uint32Array;
 
@@ -49,6 +62,7 @@ export class PointCloudPass {
   ) {
     this.device = device;
     this.ionCount = ionCount;
+    this.visibleCount = ionCount;
 
     // ion storage buffer
     this.ionBuffer = device.createBuffer({
@@ -70,10 +84,10 @@ export class PointCloudPass {
     this.configU32 = new Uint32Array(buf);
 
     // header
-    this.configData[0] = 0.005; // point_size
-    this.configU32[1] = ionCount;
-    this.configData[2] = 1; // viewport_width
-    this.configData[3] = 1; // viewport_height
+    this.configData[OFFSET_POINT_SIZE] = 0.005;
+    this.configU32[OFFSET_ION_COUNT] = ionCount;
+    this.configData[OFFSET_VIEWPORT_WIDTH] = 1;
+    this.configData[OFFSET_VIEWPORT_HEIGHT] = 1;
 
     // palette: 128 entries × 4 floats (rgba), starting at float offset 4
     this.writePalette(colorMap ?? DEFAULT_COLOR_MAP);
@@ -150,15 +164,13 @@ export class PointCloudPass {
   }
 
   private writePalette(colorMap: ColorMapEntry[]): void {
-    const paletteOffset = 4; // header is 4 floats
-
     // fill with default grey, visibility=1
     for (let i = 0; i < PALETTE_SIZE; i++) {
-      const base = paletteOffset + i * 4;
-      this.configData[base] = 0.3; // r
-      this.configData[base + 1] = 0.3; // g
-      this.configData[base + 2] = 0.3; // b
-      this.configData[base + 3] = 1.0; // visibility
+      const base = HEADER_FLOAT_COUNT + i * PALETTE_ENTRY_FLOATS;
+      this.configData[base] = 0.3;
+      this.configData[base + 1] = 0.3;
+      this.configData[base + 2] = 0.3;
+      this.configData[base + 3] = 1.0;
     }
 
     for (const entry of colorMap) {
@@ -168,7 +180,7 @@ export class PointCloudPass {
         mq++
       ) {
         if (mq >= 0 && mq < PALETTE_SIZE) {
-          const base = paletteOffset + mq * 4;
+          const base = HEADER_FLOAT_COUNT + mq * PALETTE_ENTRY_FLOATS;
           this.configData[base] = entry.r;
           this.configData[base + 1] = entry.g;
           this.configData[base + 2] = entry.b;
@@ -184,8 +196,8 @@ export class PointCloudPass {
   }
 
   resize(width: number, height: number): void {
-    this.configData[2] = width;
-    this.configData[3] = height;
+    this.configData[OFFSET_VIEWPORT_WIDTH] = width;
+    this.configData[OFFSET_VIEWPORT_HEIGHT] = height;
     this.device.queue.writeBuffer(this.configBuffer, 0, this.configData.buffer);
   }
 
@@ -217,8 +229,12 @@ export class PointCloudPass {
     passEncoder.setBindGroup(0, this.ionBindGroup);
     passEncoder.setBindGroup(1, cameraBindGroup);
     passEncoder.setBindGroup(2, this.configBindGroup);
-    passEncoder.draw(3, this.ionCount);
+    passEncoder.draw(3, this.visibleCount);
     passEncoder.end();
+  }
+
+  setIonCutoff(n: number): void {
+    this.visibleCount = Math.max(0, Math.min(n, this.ionCount));
   }
 
   destroy(): void {

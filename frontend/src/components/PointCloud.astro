@@ -56,7 +56,7 @@
 <script>
   import { Renderer, Camera, OrbitControls, Scene, Time } from "renderer";
   import type { ColorMapEntry } from "renderer";
-  import { $appState, $eposData, $highlightedMq, $colorMap, DEFAULT_COLOR_MAP } from "../stores/ui";
+  import { $appState, $eposData, $highlightedMq, $colorMap, $ionCutoff, DEFAULT_COLOR_MAP } from "../stores/ui";
 
   const overlay = document.getElementById("point-cloud-overlay")!;
   const overlayText = overlay.querySelector(".overlay-text")!;
@@ -144,6 +144,10 @@
         return { ...entry, r: 0.1, g: 0.1, b: 0.1, visibility: 0.0 };
       });
       renderer.updatePointCloudPalette(dimmed);
+    });
+
+    $ionCutoff.subscribe((cutoff) => {
+      renderer.setIonCutoff(cutoff);
     });
 
     const onResize = () => {

@@ -31,6 +31,7 @@ export const $appState = map<{
 export const $eposData = atom<EposData | null>(null);
 export const $highlightedMq = atom<{ min: number; max: number } | null>(null);
 export const $colorMap = atom<ColorMapEntry[]>(DEFAULT_COLOR_MAP);
+export const $ionCutoff = atom<number>(0);
 
 export function loadData(url: string) {
   task(async () => {
@@ -41,6 +42,7 @@ export function loadData(url: string) {
       const data = await loadEposFromUrl(url);
 
       $eposData.set(data);
+      $ionCutoff.set(data.count);
       $appState.setKey("status", "ready");
       $appState.setKey("message", "");
     } catch (err) {

@@ -1,0 +1,210 @@
+---
+---
+
+<div class="scrubber-container">
+  <div class="scrubber-track">
+    <div id="scrubber-sparkline"></div>
+    <input
+      type="range"
+      id="scrubber-input"
+      min="0"
+      max="1"
+      value="1"
+      step="1"
+      disabled
+    />
+  </div>
+  <span class="scrubber-label" id="scrubber-label"></span>
+</div>
+
+<style>
+  .scrubber-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    background: #0a0a0a;
+    box-sizing: border-box;
+  }
+
+  .scrubber-track {
+    flex: 1;
+    position: relative;
+    height: 40px;
+  }
+
+  #scrubber-sparkline {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.3;
+  }
+
+  #scrubber-sparkline :global(svg) {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #scrubber-sparkline :global(.sparkline-area) {
+    fill: #444;
+  }
+
+  #scrubber-sparkline :global(.sparkline-line) {
+    fill: none;
+    stroke: #666;
+    stroke-width: 1;
+  }
+
+  input[type="range"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  input[type="range"]:disabled {
+    cursor: default;
+    opacity: 0.4;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 3px;
+    height: 40px;
+    background: #999;
+    border: none;
+    border-radius: 1px;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 3px;
+    height: 40px;
+    background: #999;
+    border: none;
+    border-radius: 1px;
+  }
+
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 100%;
+    background: transparent;
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 100%;
+    background: transparent;
+  }
+
+  .scrubber-label {
+    color: #666;
+    font-size: 11px;
+    white-space: nowrap;
+    min-width: 100px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+
+<script>
+  import * as d3 from "d3";
+  import { $appState, $eposData, $ionCutoff } from "../stores/ui";
+
+  const input = document.getElementById("scrubber-input") as HTMLInputElement;
+  const label = document.getElementById("scrubber-label")!;
+
+  let initialized = false;
+
+  function formatCount(n: number): string {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+    if (n >= 1_000) return (n / 1_000).toFixed(0) + "K";
+    return n.toString();
+  }
+
+  $appState.subscribe((state) => {
+    if (state.status === "ready" && !initialized) {
+      const data = $eposData.get();
+      if (data) {
+        initialized = true;
+        initScrubber(data);
+      }
+    }
+  });
+
+  function initScrubber(eposData: import("parser").EposData) {
+    const total = eposData.count;
+
+    input.min = "0";
+    input.max = String(total);
+    input.value = String(total);
+    input.step = String(Math.max(1, Math.floor(total / 1000)));
+    input.disabled = false;
+
+    label.textContent = `${formatCount(total)} / ${formatCount(total)}`;
+
+    let rafId = 0;
+    input.addEventListener("input", () => {
+      const cutoff = parseInt(input.value, 10);
+      label.textContent = `${formatCount(cutoff)} / ${formatCount(total)}`;
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        $ionCutoff.set(cutoff);
+      });
+    });
+
+    renderSparkline(eposData);
+  }
+
+  function renderSparkline(eposData: import("parser").EposData) {
+    const container = document.getElementById("scrubber-sparkline");
+    if (!container) return;
+
+    const zCol = eposData.column("z");
+    const sampleCount = 1000;
+    const step = Math.max(1, Math.floor(eposData.count / sampleCount));
+    const samples: { index: number; z: number }[] = [];
+
+    for (let i = 0; i < eposData.count; i += step) {
+      samples.push({ index: i, z: zCol.get(i) });
+    }
+
+    const rect = container.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+
+    if (width === 0 || height === 0) return;
+
+    const x = d3.scaleLinear().domain([0, eposData.count]).range([0, width]);
+    const y = d3
+      .scaleLinear()
+      .domain(d3.extent(samples, (d) => d.z) as [number, number])
+      .range([height, 0]);
+
+    const area = d3
+      .area<{ index: number; z: number }>()
+      .x((d) => x(d.index))
+      .y0(height)
+      .y1((d) => y(d.z));
+
+    const line = d3
+      .line<{ index: number; z: number }>()
+      .x((d) => x(d.index))
+      .y((d) => y(d.z));
+
+    const svg = d3
+      .select(container)
+      .append("svg")
+      .attr("viewBox", `0 0 ${width} ${height}`)
+      .attr("preserveAspectRatio", "none");
+
+    svg.append("path").datum(samples).attr("class", "sparkline-area").attr("d", area);
+    svg.append("path").datum(samples).attr("class", "sparkline-line").attr("d", line);
+  }
+</script>

@@ -1,6 +1,7 @@
 ---
 import PointCloud from "../components/PointCloud.astro";
 import MassSpectrum from "../components/MassSpectrum.astro";
+import EvaporationScrubber from "../components/EvaporationScrubber.astro";
 ---
 
 <div class="dashboard">
@@ -9,6 +10,9 @@ import MassSpectrum from "../components/MassSpectrum.astro";
   </div>
   <div class="mass-spectrum-panel">
     <MassSpectrum />
+  </div>
+  <div class="scrubber-panel">
+    <EvaporationScrubber />
   </div>
 </div>
 
@@ -27,6 +31,11 @@ import MassSpectrum from "../components/MassSpectrum.astro";
 
   .mass-spectrum-panel {
     height: 200px;
+    flex-shrink: 0;
+  }
+
+  .scrubber-panel {
+    height: 60px;
     flex-shrink: 0;
   }
 </style>

@@ -78,9 +78,9 @@
 
 <script>
   import * as d3 from "d3";
-  import { $appState, $eposData, $highlightedMq, DEFAULT_COLOR_MAP } from "../stores/ui";
+  import { $appState, $eposData, $highlightedMq, $ionCutoff, DEFAULT_COLOR_MAP } from "../stores/ui";
+  import { buildPrefixHistogram, queryHistogramInto, BIN_WIDTH, BIN_COUNT, type PrefixHistogram } from "../stores/histogram";
 
-  const BIN_WIDTH = 0.1;
   const DEFAULT_RANGE: [number, number] = [0, 128];
 
   const overlay = document.getElementById("mass-spectrum-overlay")!;
@@ -122,26 +122,22 @@
     const container = document.getElementById("mass-spectrum");
     if (!container) return;
 
-    // bin the m/q data
-    const mqCol = eposData.column("mq");
-    const bins = new Map<number, number>();
-    for (let i = 0; i < eposData.count; i++) {
-      const mq = mqCol.get(i);
-      const bin = Math.floor(mq / BIN_WIDTH);
-      bins.set(bin, (bins.get(bin) ?? 0) + 1);
-    }
+    const prefixHist = buildPrefixHistogram(eposData);
+    const counts = new Uint32Array(BIN_COUNT);
+    queryHistogramInto(prefixHist, eposData.count, counts);
 
-    const data = Array.from(bins.entries())
-      .map(([bin, count]) => ({ mq: bin * BIN_WIDTH, count }))
-      .sort((a, b) => a.mq - b.mq);
+    const updateCounts = renderChart(container, counts);
 
-    renderChart(container, data);
+    $ionCutoff.subscribe((cutoff) => {
+      queryHistogramInto(prefixHist, cutoff, counts);
+      updateCounts();
+    });
   }
 
   function renderChart(
     container: HTMLElement,
-    data: { mq: number; count: number }[],
-  ) {
+    counts: Uint32Array,
+  ): () => void {
     container.innerHTML = "";
 
     const rect = container.getBoundingClientRect();
@@ -159,9 +155,12 @@
       .append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    const maxCount = d3.max(data, (d) => d.count) ?? 1;
-
     const x = d3.scaleLinear().domain(DEFAULT_RANGE).range([0, width]);
+
+    let maxCount = 1;
+    for (let i = 0; i < counts.length; i++) {
+      if (counts[i] > maxCount) maxCount = counts[i];
+    }
 
     const y = d3
       .scaleLog()
@@ -175,7 +174,8 @@
       .attr("transform", `translate(0,${height})`)
       .call(d3.axisBottom(x).ticks(20));
 
-    g.append("g")
+    const yAxisGroup = g
+      .append("g")
       .attr("class", "axis y-axis")
       .call(d3.axisLeft(y).ticks(5, "~s"));
 
@@ -202,41 +202,74 @@
       (width / (DEFAULT_RANGE[1] - DEFAULT_RANGE[0])) * BIN_WIDTH,
     );
 
-    const bars = barsGroup
-      .selectAll(".bar")
-      .data(data.filter((d) => d.count > 0))
-      .join("rect")
-      .attr("class", "bar")
-      .attr("x", (d) => x(d.mq))
-      .attr("y", (d) => y(Math.max(1, d.count)))
-      .attr("width", barWidth)
-      .attr("height", (d) => height - y(Math.max(1, d.count)))
-      .attr("fill", (d) => getColorForMq(d.mq + BIN_WIDTH / 2));
+    // pre-create all bin rects once
+    const barEls: SVGRectElement[] = [];
+    for (let bin = 0; bin < BIN_COUNT; bin++) {
+      const mq = bin * BIN_WIDTH;
+      const el = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      el.setAttribute("class", "bar");
+      el.setAttribute("x", String(x(mq)));
+      el.setAttribute("width", String(barWidth));
+      el.setAttribute("fill", getColorForMq(mq + BIN_WIDTH / 2));
+      el.dataset.bin = String(bin);
 
-    bars.on("click", (event, d) => {
-      event.stopPropagation();
-      const current = $highlightedMq.get();
-      const mqInt = Math.round(d.mq);
-      if (current && Math.round(current.min) === mqInt) {
-        $highlightedMq.set(null);
-      } else {
-        $highlightedMq.set({ min: mqInt - 0.5, max: mqInt + 0.5 });
+      el.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const current = $highlightedMq.get();
+        const mqInt = Math.round(mq);
+        if (current && Math.round(current.min) === mqInt) {
+          $highlightedMq.set(null);
+        } else {
+          $highlightedMq.set({ min: mqInt - 0.5, max: mqInt + 0.5 });
+        }
+      });
+
+      barsGroup.node()!.appendChild(el);
+      barEls.push(el);
+    }
+
+    let currentX = x;
+
+    function updateCounts() {
+      let newMax = 1;
+      for (let i = 0; i < counts.length; i++) {
+        if (counts[i] > newMax) newMax = counts[i];
       }
-    });
+      y.domain([1, newMax]);
+      yAxisGroup.call(d3.axisLeft(y).ticks(5, "~s"));
+
+      const highlight = $highlightedMq.get();
+
+      for (let bin = 0; bin < BIN_COUNT; bin++) {
+        const el = barEls[bin];
+        const count = counts[bin];
+        if (count === 0) {
+          el.setAttribute("height", "0");
+          el.setAttribute("y", String(height));
+          continue;
+        }
+        const yPos = y(count);
+        el.setAttribute("y", String(yPos));
+        el.setAttribute("height", String(height - yPos));
+
+        if (highlight) {
+          const mq = bin * BIN_WIDTH;
+          const mqInt = Math.round(mq);
+          el.setAttribute("opacity", mqInt >= Math.round(highlight.min) && mqInt <= Math.round(highlight.max) ? "1" : "0.2");
+        } else {
+          el.setAttribute("opacity", "1");
+        }
+      }
+    }
+
+    updateCounts();
 
     svg.on("click", () => {
       $highlightedMq.set(null);
     });
 
-    $highlightedMq.subscribe((highlight) => {
-      bars.attr("opacity", (d) => {
-        if (!highlight) return 1;
-        const mqInt = Math.round(d.mq);
-        return mqInt >= Math.round(highlight.min) &&
-          mqInt <= Math.round(highlight.max)
-          ? 1
-          : 0.2;
-      });
+    $highlightedMq.subscribe(() => {
+      updateCounts();
     });
 
     const zoom = d3
@@ -251,17 +284,23 @@
         [width, height],
       ])
       .on("zoom", (event) => {
-        const newX = event.transform.rescaleX(x);
-        xAxis.call(d3.axisBottom(newX).ticks(20));
+        currentX = event.transform.rescaleX(x);
+        xAxis.call(d3.axisBottom(currentX).ticks(20));
 
         const newBarWidth = Math.max(
           0.5,
-          (width / (newX.domain()[1] - newX.domain()[0])) * BIN_WIDTH,
+          (width / (currentX.domain()[1] - currentX.domain()[0])) * BIN_WIDTH,
         );
 
-        bars.attr("x", (d) => newX(d.mq)).attr("width", newBarWidth);
+        for (let bin = 0; bin < BIN_COUNT; bin++) {
+          const mq = bin * BIN_WIDTH;
+          barEls[bin].setAttribute("x", String(currentX(mq)));
+          barEls[bin].setAttribute("width", String(newBarWidth));
+        }
       });
 
     svg.call(zoom);
+
+    return updateCounts;
   }
 </script>
