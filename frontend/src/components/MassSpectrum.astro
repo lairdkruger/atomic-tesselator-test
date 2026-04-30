@@ -80,6 +80,7 @@
   import * as d3 from "d3";
   import { $appState, $eposData, $highlightedMq, $ionCutoff, DEFAULT_COLOR_MAP } from "../stores/ui";
   import { buildPrefixHistogram, queryHistogramInto, BIN_WIDTH, BIN_COUNT, type PrefixHistogram } from "../stores/histogram";
+  import type { EposData } from "parser";
 
   const DEFAULT_RANGE: [number, number] = [0, 128];
 
@@ -118,7 +119,7 @@
     }
   });
 
-  function initChart(eposData: import("parser").EposData) {
+  function initChart(eposData: EposData) {
     const container = document.getElementById("mass-spectrum");
     if (!container) return;
 

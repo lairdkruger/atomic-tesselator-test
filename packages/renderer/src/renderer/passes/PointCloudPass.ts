@@ -206,21 +206,22 @@ export class PointCloudPass {
     cameraBindGroup: GPUBindGroup,
     colorView: GPUTextureView,
     depthView: GPUTextureView,
+    loadOp: "clear" | "load" = "clear",
   ): void {
     const passEncoder = encoder.beginRenderPass({
       label: "Point Cloud Pass",
       colorAttachments: [
         {
           view: colorView,
-          clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1 },
-          loadOp: "clear",
+          ...(loadOp === "clear" ? { clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1 } } : {}),
+          loadOp,
           storeOp: "store",
         },
       ],
       depthStencilAttachment: {
         view: depthView,
-        depthClearValue: 1.0,
-        depthLoadOp: "clear",
+        ...(loadOp === "clear" ? { depthClearValue: 1.0 } : {}),
+        depthLoadOp: loadOp,
         depthStoreOp: "store",
       },
     });

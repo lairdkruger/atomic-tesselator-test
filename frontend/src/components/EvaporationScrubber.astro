@@ -116,6 +116,7 @@
 <script>
   import * as d3 from "d3";
   import { $appState, $eposData, $ionCutoff } from "../stores/ui";
+  import type { EposData } from "parser";
 
   const input = document.getElementById("scrubber-input") as HTMLInputElement;
   const label = document.getElementById("scrubber-label")!;
@@ -138,7 +139,7 @@
     }
   });
 
-  function initScrubber(eposData: import("parser").EposData) {
+  function initScrubber(eposData: EposData) {
     const total = eposData.count;
 
     input.min = "0";
@@ -162,7 +163,7 @@
     renderSparkline(eposData);
   }
 
-  function renderSparkline(eposData: import("parser").EposData) {
+  function renderSparkline(eposData: EposData) {
     const container = document.getElementById("scrubber-sparkline");
     if (!container) return;
 

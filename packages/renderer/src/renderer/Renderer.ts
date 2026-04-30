@@ -1,7 +1,10 @@
 import { Camera } from "../camera";
+import { Vec3 } from "../math";
 import { OutputPass } from "./passes/OutputPass";
 import { PointCloudPass } from "./passes/PointCloudPass";
 import type { ColorMapEntry } from "./passes/PointCloudPass";
+import { GridPass } from "./passes/GridPass";
+import { GridLabels } from "./GridLabels";
 import { createCameraBindGroupLayout } from "../camera/CameraUniforms";
 
 export interface RendererOptions {
@@ -24,6 +27,8 @@ export class Renderer {
 
   private outputPass: OutputPass;
   private pointCloudPass: PointCloudPass | null = null;
+  private gridPass: GridPass | null = null;
+  private gridLabels: GridLabels | null = null;
   private cameraBindGroupLayout: GPUBindGroupLayout;
 
   private renderTexture: GPUTexture | null = null;
@@ -165,6 +170,32 @@ export class Renderer {
     this.pointCloudPass?.setIonCutoff(n);
   }
 
+  public setGridBounds(min: Vec3, max: Vec3, spacing = 10): void {
+    // snap to round intervals
+    const sMin = [
+      Math.floor(min.x / spacing) * spacing,
+      Math.floor(min.y / spacing) * spacing,
+      Math.floor(min.z / spacing) * spacing,
+    ];
+    const sMax = [
+      Math.ceil(max.x / spacing) * spacing,
+      Math.ceil(max.y / spacing) * spacing,
+      Math.ceil(max.z / spacing) * spacing,
+    ];
+
+    if (!this.gridPass) {
+      this.gridPass = new GridPass(this.device, this.cameraBindGroupLayout);
+      this.gridPass.resize(this.renderWidth, this.renderHeight);
+    }
+    this.gridPass.setGrid(sMin[0], sMin[1], sMin[2], sMax[0], sMax[1], sMax[2], spacing);
+
+    if (!this.gridLabels) {
+      this.gridLabels = new GridLabels(this.canvas);
+      this.gridLabels.resize(this.canvas.clientWidth, this.canvas.clientHeight);
+    }
+    this.gridLabels.setGrid(sMin[0], sMin[1], sMin[2], sMax[0], sMax[1], sMax[2], spacing);
+  }
+
   render(camera: Camera): void {
     if (!this.renderTextureView || !this.depthTextureView) return;
 
@@ -172,8 +203,9 @@ export class Renderer {
 
     const commandEncoder = this.device.createCommandEncoder();
 
-    if (this.pointCloudPass) {
-      this.pointCloudPass.render(
+    // grid renders first (clears targets), point cloud composites on top
+    if (this.gridPass) {
+      this.gridPass.render(
         commandEncoder,
         camera.uniforms.bindGroup,
         this.renderTextureView,
@@ -181,10 +213,37 @@ export class Renderer {
       );
     }
 
+    if (this.pointCloudPass) {
+      const loadOp = this.gridPass ? "load" as const : "clear" as const;
+      this.pointCloudPass.render(
+        commandEncoder,
+        camera.uniforms.bindGroup,
+        this.renderTextureView,
+        this.depthTextureView,
+        loadOp,
+      );
+    }
+
+    // if no passes cleared, we need a manual clear
+    if (!this.gridPass && !this.pointCloudPass) {
+      const passEncoder = commandEncoder.beginRenderPass({
+        colorAttachments: [{
+          view: this.renderTextureView,
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        }],
+      });
+      passEncoder.end();
+    }
+
     const swapChainView = this.context.getCurrentTexture().createView();
     this.outputPass.render(commandEncoder, this.renderTextureView, swapChainView);
 
     this.device.queue.submit([commandEncoder.finish()]);
+
+    // update HTML labels after GPU submit
+    this.gridLabels?.update(camera);
   }
 
   public getDevice(): GPUDevice {
@@ -225,11 +284,15 @@ export class Renderer {
     this.depthTextureView = this.depthTexture.createView();
 
     this.pointCloudPass?.resize(this.renderWidth, this.renderHeight);
+    this.gridPass?.resize(this.renderWidth, this.renderHeight);
+    this.gridLabels?.resize(this.canvas.clientWidth, this.canvas.clientHeight);
   }
 
   public destroy(): void {
     this.renderTexture?.destroy();
     this.depthTexture?.destroy();
     this.pointCloudPass?.destroy();
+    this.gridPass?.destroy();
+    this.gridLabels?.destroy();
   }
 }

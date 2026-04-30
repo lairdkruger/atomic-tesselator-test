@@ -54,9 +54,10 @@
 </style>
 
 <script>
-  import { Renderer, Camera, OrbitControls, Scene, Time } from "renderer";
+  import { Renderer, Camera, OrbitControls, Scene, Time, Vec3 } from "renderer";
   import type { ColorMapEntry } from "renderer";
   import { $appState, $eposData, $highlightedMq, $colorMap, $ionCutoff, DEFAULT_COLOR_MAP } from "../stores/ui";
+  import { EposData } from "parser";
 
   const overlay = document.getElementById("point-cloud-overlay")!;
   const overlayText = overlay.querySelector(".overlay-text")!;
@@ -81,7 +82,7 @@
     }
   });
 
-  async function initRenderer(eposData: import("parser").EposData) {
+  async function initRenderer(eposData: EposData) {
     const canvas = document.getElementById("point-cloud-canvas") as HTMLCanvasElement;
     if (!canvas) throw new Error("canvas not found");
 
@@ -127,6 +128,8 @@
       (yMin + yMax) / 2,
       (zMin + zMax) / 2,
     );
+
+    renderer.setGridBounds(new Vec3(xMin, yMin, zMin), new Vec3(xMax, yMax, zMax));
 
     // react to highlight changes
     $highlightedMq.subscribe((highlight) => {
