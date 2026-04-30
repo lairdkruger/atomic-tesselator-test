@@ -1,6 +1,7 @@
 {
   "name": "atomic-tesselator-test",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "pnpm run --parallel -r dev",
     "build": "pnpm run --parallel -r build",
