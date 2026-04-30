@@ -26,6 +26,9 @@ export class OrbitControls {
   private isPanning = false;
   private lastMouseX = 0;
   private lastMouseY = 0;
+  private lastTouchX = 0;
+  private lastTouchY = 0;
+  private lastPinchDistance = 0;
 
   private readonly rotateSensitivity = 0.005;
   private readonly panSensitivity = 0.01;
@@ -63,6 +66,7 @@ export class OrbitControls {
     Vec3.copy(this.desiredTarget, this.currentTarget);
 
     this.initMouse();
+    this.initTouch();
     this.applyToCamera();
   }
 
@@ -114,6 +118,91 @@ export class OrbitControls {
     );
 
     this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
+  private initTouch(): void {
+    this.canvas.addEventListener(
+      "touchstart",
+      (e) => {
+        e.preventDefault();
+        if (e.touches.length === 1) {
+          this.isDragging = true;
+          this.isPanning = false;
+          this.lastTouchX = e.touches[0].clientX;
+          this.lastTouchY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+          this.isDragging = false;
+          this.isPanning = true;
+          this.lastPinchDistance = this.getTouchDistance(e.touches);
+          const mid = this.getTouchMidpoint(e.touches);
+          this.lastTouchX = mid.x;
+          this.lastTouchY = mid.y;
+        }
+      },
+      { passive: false },
+    );
+
+    this.canvas.addEventListener(
+      "touchmove",
+      (e) => {
+        e.preventDefault();
+        if (e.touches.length === 1 && this.isDragging) {
+          const dx = e.touches[0].clientX - this.lastTouchX;
+          const dy = e.touches[0].clientY - this.lastTouchY;
+          this.lastTouchX = e.touches[0].clientX;
+          this.lastTouchY = e.touches[0].clientY;
+          this.desiredAzimuth += dx * this.rotateSensitivity;
+          this.desiredElevation += dy * this.rotateSensitivity;
+          this.desiredElevation = Math.max(
+            this.minElevation,
+            Math.min(this.maxElevation, this.desiredElevation),
+          );
+        } else if (e.touches.length === 2) {
+          // pinch zoom
+          const distance = this.getTouchDistance(e.touches);
+          const pinchRatio = this.lastPinchDistance / distance;
+          this.desiredRadius = Math.max(
+            this.minRadius,
+            Math.min(this.maxRadius, this.desiredRadius * pinchRatio),
+          );
+          this.lastPinchDistance = distance;
+          // two-finger pan via midpoint delta
+          const mid = this.getTouchMidpoint(e.touches);
+          const dx = mid.x - this.lastTouchX;
+          const dy = mid.y - this.lastTouchY;
+          this.lastTouchX = mid.x;
+          this.lastTouchY = mid.y;
+          this.pan(dx, dy);
+        }
+      },
+      { passive: false },
+    );
+
+    this.canvas.addEventListener("touchend", (e) => {
+      if (e.touches.length === 1) {
+        // transitioned 2→1 finger: switch back to orbit
+        this.isDragging = true;
+        this.isPanning = false;
+        this.lastTouchX = e.touches[0].clientX;
+        this.lastTouchY = e.touches[0].clientY;
+      } else {
+        this.isDragging = false;
+        this.isPanning = false;
+      }
+    });
+  }
+
+  private getTouchDistance(touches: TouchList): number {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  private getTouchMidpoint(touches: TouchList): { x: number; y: number } {
+    return {
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2,
+    };
   }
 
   private pan(dx: number, dy: number): void {

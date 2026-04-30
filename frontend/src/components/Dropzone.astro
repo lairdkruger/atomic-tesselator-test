@@ -1,0 +1,76 @@
+---
+---
+
+<div class="drop-zone" id="drop-zone">
+  <input type="file" id="file-input" accept=".epos" hidden />
+  <span class="drop-text">Drop .epos file or click to browse</span>
+</div>
+
+<style>
+  .drop-zone {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0a0a0a;
+    cursor: pointer;
+    transition: opacity 0.3s;
+  }
+
+  .drop-zone.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .drop-zone.dragover {
+    background: #111;
+  }
+
+  .drop-text {
+    color: #666;
+    font-size: 14px;
+  }
+</style>
+
+<script>
+  import { $appState, loadFile } from "../stores/ui";
+
+  const dropZone = document.getElementById("drop-zone")!;
+  const fileInput = document.getElementById("file-input") as HTMLInputElement;
+
+  function handleFile(file: File) {
+    if (!file.name.endsWith(".epos")) return;
+    loadFile(file);
+  }
+
+  dropZone.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) handleFile(file);
+  });
+
+  dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.classList.add("dragover");
+  });
+
+  dropZone.addEventListener("dragleave", () => {
+    dropZone.classList.remove("dragover");
+  });
+
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("dragover");
+    const file = e.dataTransfer?.files[0];
+    if (file) handleFile(file);
+  });
+
+  $appState.subscribe((state) => {
+    if (state.status !== "idle") {
+      dropZone.classList.add("hidden");
+    }
+  });
+</script>

@@ -1,10 +1,12 @@
 ---
+import Dropzone from "../components/Dropzone.astro";
 import PointCloud from "../components/PointCloud.astro";
 import MassSpectrum from "../components/MassSpectrum.astro";
 import EvaporationScrubber from "../components/EvaporationScrubber.astro";
 ---
 
 <div class="dashboard">
+  <Dropzone />
   <div class="point-cloud">
     <PointCloud />
   </div>
@@ -39,9 +41,3 @@ import EvaporationScrubber from "../components/EvaporationScrubber.astro";
     flex-shrink: 0;
   }
 </style>
-
-<script>
-  import { loadData } from "../stores/ui";
-
-  loadData("/data/local/atom_probe_tomography_data-public.epos");
-</script>

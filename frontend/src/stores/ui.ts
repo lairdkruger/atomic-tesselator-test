@@ -1,7 +1,7 @@
 import { atom, map, task } from "nanostores";
 import type { EposData } from "parser";
 import type { ColorMapEntry } from "renderer";
-import { loadEposFromUrl } from "../workers/epos-loader";
+import { loadEposFromUrl, loadEposFromFile } from "../workers/epos-loader";
 
 export const DEFAULT_COLOR_MAP: ColorMapEntry[] = [
   { mqMin: 13.5, mqMax: 14.5, r: 0.4, g: 0.8, b: 0.4 }, // Si²⁺ (14)
@@ -18,20 +18,39 @@ export const DEFAULT_COLOR_MAP: ColorMapEntry[] = [
   { mqMin: 73.5, mqMax: 74.5, r: 0.8, g: 0.3, b: 0.6 }, // Ge-74
 ];
 
-export type AppStatus = "loading" | "ready" | "error";
+export type AppStatus = "idle" | "loading" | "ready" | "error";
 
 export const $appState = map<{
   status: AppStatus;
   message: string;
 }>({
-  status: "loading",
-  message: "Loading EPOS data...",
+  status: "idle" as AppStatus,
+  message: "",
 });
 
 export const $eposData = atom<EposData | null>(null);
 export const $highlightedMq = atom<{ min: number; max: number } | null>(null);
 export const $colorMap = atom<ColorMapEntry[]>(DEFAULT_COLOR_MAP);
 export const $ionCutoff = atom<number>(0);
+
+export function loadFile(file: File) {
+  task(async () => {
+    try {
+      $appState.setKey("status", "loading");
+      $appState.setKey("message", "Parsing EPOS file...");
+
+      const data = await loadEposFromFile(file);
+
+      $eposData.set(data);
+      $ionCutoff.set(data.count);
+      $appState.setKey("status", "ready");
+      $appState.setKey("message", "");
+    } catch (err) {
+      $appState.setKey("status", "error");
+      $appState.setKey("message", err instanceof Error ? err.message : "Failed to parse file");
+    }
+  });
+}
 
 export function loadData(url: string) {
   task(async () => {
