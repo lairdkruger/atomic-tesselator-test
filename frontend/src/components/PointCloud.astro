@@ -1,0 +1,98 @@
+---
+---
+
+<canvas id="point-cloud-canvas"></canvas>
+
+<style>
+  canvas {
+    width: 100%;
+    height: 100vh;
+    display: block;
+  }
+</style>
+
+<script>
+  import { loadEposFromUrl } from "../workers/epos-loader";
+  import { Renderer, Camera, OrbitControls, Scene } from "renderer";
+
+  async function init() {
+    const canvas = document.getElementById(
+      "point-cloud-canvas",
+    ) as HTMLCanvasElement;
+    if (!canvas) throw new Error("canvas not found");
+
+    const renderer = await Renderer.create(canvas, {
+      devicePixelRatio: window.devicePixelRatio,
+    });
+
+    const device = renderer.getDevice();
+    const camera = new Camera(device, "main", {
+      fov: Math.PI / 4,
+      near: 0.1,
+      far: 500,
+    });
+    renderer.registerCamera(camera);
+
+    const scene = new Scene("main");
+    scene.add(camera);
+
+    const controls = new OrbitControls(canvas, camera, {
+      radius: 100,
+      elevation: 0.3,
+    });
+
+    // load EPOS data
+    const eposData = await loadEposFromUrl(
+      "/data/local/atom_probe_tomography_data-public.epos",
+    );
+
+    renderer.setPointCloudBuffer(eposData.buffer, eposData.count);
+
+    // center orbit target on data midpoint
+    const xCol = eposData.column("x");
+    const yCol = eposData.column("y");
+    const zCol = eposData.column("z");
+    let xMin = Infinity,
+      xMax = -Infinity;
+    let yMin = Infinity,
+      yMax = -Infinity;
+    let zMin = Infinity,
+      zMax = -Infinity;
+
+    // sample every 1000th ion for fast bounds estimation
+    for (let i = 0; i < eposData.count; i += 1000) {
+      const x = xCol.get(i);
+      const y = yCol.get(i);
+      const z = zCol.get(i);
+      if (x < xMin) xMin = x;
+      if (x > xMax) xMax = x;
+      if (y < yMin) yMin = y;
+      if (y > yMax) yMax = y;
+      if (z < zMin) zMin = z;
+      if (z > zMax) zMax = z;
+    }
+
+    controls.setTarget(
+      (xMin + xMax) / 2,
+      (yMin + yMax) / 2,
+      (zMin + zMax) / 2,
+    );
+
+    // handle resize
+    const onResize = () => {
+      renderer.resize(canvas.clientWidth, canvas.clientHeight);
+    };
+    window.addEventListener("resize", onResize);
+
+    // render loop
+    function frame() {
+      controls.update();
+      scene.root.updateWorldMatrix();
+      renderer.render(camera);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  init().catch(console.error);
+</script>
