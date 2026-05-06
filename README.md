@@ -1,4 +1,4 @@
-# Atomic Tesselator
+# Atom Probe Data Visualisation
 
 Interactive dashboard for exploring Atom Probe Tomography (APT) data. Renders millions of ions in real-time using WebGPU.
 
